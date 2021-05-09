@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	pb "github.com/Jille/raft-grpc-example/proto"
 	"github.com/Jille/raft-grpc-leader-rpc/rafterrors"
 	"github.com/LaJunkai/drifterdb"
@@ -49,16 +49,34 @@ func (x *DrifterX) Apply(l *raft.Log) interface{} {
 	c := LoadCommandFromBytes(l.Data)
 	switch c.OpType {
 	case OpPut:
-		fmt.Println("put", c.Key, c.Value)
-		x.db.Put(c.Key, c.Value)
+		{
+			if c.TrxID == 0 { // 未指定事务，开启新事务完成操作
+				return x.db.Put(c.Key, c.Value)
+			} else {
+				if trx := x.db.MapTransaction(c.TrxID); trx != nil {
+					return trx.Put(c.Key, c.Value)
+				} else {
+					return errors.New("未找到指定事务，执行失败")
+				}
+			}
+		}
 	case OpDel:
-		x.db.Delete(c.Key)
+		if c.TrxID == 0 { // 未指定事务，开启新事务完成操作
+			return x.db.Delete(c.Key)
+		} else {
+			if trx := x.db.MapTransaction(c.TrxID); trx != nil {
+				return trx.Delete(c.Key)
+			} else {
+				return errors.New("未找到指定事务，执行失败")
+			}
+		}
+
 	case OpRol:
 		x.db.RollbackTransactionByID(c.TrxID)
 	case OpCmt:
 		x.db.CommitTransactionByID(c.TrxID)
 	case OpTrx:
-		x.db.StartTransaction()
+		return x.db.StartTransaction()
 	}
 	return nil
 }

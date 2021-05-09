@@ -11,8 +11,8 @@ $ ./raft-grpc-example --raft_id=nodeA --address=localhost:50051 --raft_data_dir 
 $ ./raft-grpc-example --raft_id=nodeB --address=localhost:50052 --raft_data_dir /tmp/my-raft-cluster
 $ ./raft-grpc-example --raft_id=nodeC --address=localhost:50053 --raft_data_dir /tmp/my-raft-cluster
 $ go get github.com/Jille/raftadmin
-$ raftadmin localhost:50051 add_voter nodeB localhost:50052 0
-$ raftadmin --leader multi:///localhost:50051,localhost:50052 add_voter nodeC localhost:50053 0
+$ raftadmin localhost:51127 add_voter nodeB localhost:51128 0
+$ raftadmin --leader multi:///localhost:51127,localhost:51128 add_voter nodeC localhost:51129 0
 $ go run cmd/hammer/hammer.go &
 $ raftadmin --leader multi:///localhost:50051,localhost:50052,localhost:50053 leadership_transfer
 $ wait

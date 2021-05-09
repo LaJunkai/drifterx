@@ -40,3 +40,21 @@ type ReqBody struct {
 	Type string `json:"type"` // int string bool json
 	TrxID uint32 `json:"trx_id"`
 }
+
+type TrxParams struct {
+	TrxID uint32 `json:"trx_id"`
+}
+
+type RangeParams struct {
+	StartKey string `json:"start_key"`
+	EndKey string `json:"end_key"`
+	Offset int `json:"offset"`
+	Count int `json:"count"`
+	Type string `json:"type"`
+	TrxID uint32 `json:"trx_id"`
+}
+
+type KV struct {
+	Key string `json:"key"`
+	Value interface{} `json:"value"`
+}

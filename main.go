@@ -10,10 +10,13 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
+	"time"
 
 	"github.com/Jille/raft-grpc-leader-rpc/leaderhealth"
 	transport "github.com/Jille/raft-grpc-transport"
 	"github.com/Jille/raftadmin"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/hashicorp/raft"
 	boltdb "github.com/hashicorp/raft-boltdb"
@@ -23,11 +26,10 @@ import (
 
 var (
 	// 命令行参数，tcp地址、raftID、raft目录、是否是bootstrap
-	myAddr = flag.String("address", "localhost:50051", "TCP host+port for this node")
-	raftId = flag.String("raft_id", "nodeA", "Node id used by Raft")
-	drifterAddr  = flag.String("http_address", "0.0.0.0:1127", "tcp host+port for db http interface.")
-	raftDir       = flag.String("raft_data_dir", "cluster", "Raft data dir")
-	raftBootstrap = flag.Bool("bootstrap", false, "Whether to bootstrap the Raft cluster")
+	myAddr = flag.String("address", "localhost:51127", "tcp协议的IP＋port(port值应介于10000 和 65500之间)，如localhost:51127，其中[port % 10000]的值将用于http服务")
+	raftId = flag.String("raft_id", "nodeA", "节点ID")
+	raftDir       = flag.String("raft_data_dir", "cluster", "Raft日志存储的根目录")
+	raftBootstrap = flag.Bool("bootstrap", false, "是否是创世节点")
 )
 
 func main() {
@@ -41,6 +43,9 @@ func main() {
 	ctx := context.Background()
 	// split地址ip和端口
 	_, port, err := net.SplitHostPort(*myAddr)
+	if intPort, _ := strconv.Atoi(port); intPort < 10000 {
+		log.Fatalf("参数 --address 中包含的端口号应该大于10000")
+	}
 	if err != nil {
 		log.Fatalf("failed to parse local address (%q): %v", *myAddr, err)
 	}
@@ -51,9 +56,9 @@ func main() {
 	}
 	// 实例化wordTracker
 	db := drifterdb.OpenDB("db/" + *raftId)
-	wt := NewDrifterX(db)
+	drifterX := NewDrifterX(db)
 	// 实例化Raft，传入context、id、监听地址、状态机；获取transport manager
-	r, tm, err := NewRaft(ctx, *raftId, *myAddr, wt)
+	r, tm, err := NewRaft(ctx, *raftId, *myAddr, drifterX)
 	if err != nil {
 		log.Fatalf("failed to start raft: %v", err)
 	}
@@ -61,8 +66,8 @@ func main() {
 	s := grpc.NewServer()
 	//// 注册服务器，grpc的方法, 改成http服务对外暴露
 	pb.RegisterExampleServer(s, &rpcInterface{
-		drifterX: wt, // 状态机实例
-		raft:     r,  // Raft实例
+		drifterX: drifterX, // 状态机实例
+		raft:     r,        // Raft实例
 	})
 	tm.Register(s)
 	leaderhealth.Setup(r, s, []string{"Example"})
@@ -79,13 +84,30 @@ func StartDrifterServer(db drifterdb.BaseDB, r *raft.Raft) {
 
 
 	router := gin.Default()
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"*"},
+		AllowHeaders:     []string{"*"},
+		ExposeHeaders:    []string{"*"},
+		AllowCredentials: false,
+		AllowOriginFunc: func(origin string) bool {
+			return true
+		},
+		MaxAge: 12 * time.Hour,
+	}))
 	router.POST("/db/put", PutHandler(db, r))
 	router.POST("/db/get", GetHandler(db, r))
-	_, port, err := net.SplitHostPort(*drifterAddr)
+	router.POST("/db/delete", DeleteHandler(db, r))
+	router.POST("/db/start-transaction", StartTransactionHandler(db, r))
+	router.POST("/db/commit-transaction", GetHandler(db, r))
+	router.POST("/db/rollback-transaction", RollbackTransactionHandler(db, r))
+	router.GET("/machines/nodes", MachinesHandler(db, r))
+	router.GET("/machines/leader", LeaderHandler(db, r))
+	_, port, err := net.SplitHostPort(*myAddr)
 	if err != nil {
 		log.Fatalf("error occurred during parsing http address of the db: %v", err.Error())
 	}
-	router.Run(":" + port)
+	router.Run(":" + port[1:])
 }
 
 func NewRaft(ctx context.Context, myID, myAddress string, fsm raft.FSM) (*raft.Raft, *transport.Manager, error) {

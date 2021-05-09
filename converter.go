@@ -27,7 +27,7 @@ var ConverterMap = map[string]func([]byte) interface{} {
 func ConvertToBytes(t string, data interface{}) ([]byte, error) {
 	if t == "int" {
 		result := make([]byte, 8)
-		binary.BigEndian.PutUint64(result, uint64(data.(int)))
+		binary.BigEndian.PutUint64(result, uint64(int(data.(float64))))
 		return result, nil
 	} else if t == "string" {
 		return []byte(data.(string)), nil
